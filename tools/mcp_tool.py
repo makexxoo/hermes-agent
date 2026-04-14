@@ -1234,8 +1234,23 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 "error": f"MCP server '{server_name}' is not connected"
             })
 
+        # Build _meta with caller context so MCP servers can identify
+        # which platform, user, and session triggered the tool call.
+        meta: dict | None = None
+        _platform = kwargs.get("platform")
+        _caller_id = kwargs.get("caller_id")
+        _session_id = kwargs.get("session_id")
+        if _platform or _caller_id or _session_id:
+            meta = {}
+            if _platform:
+                meta["platform"] = _platform
+            if _caller_id:
+                meta["caller_id"] = _caller_id
+            if _session_id:
+                meta["session_id"] = _session_id
+
         async def _call():
-            result = await server.session.call_tool(tool_name, arguments=args)
+            result = await server.session.call_tool(tool_name, arguments=args, meta=meta)
             # MCP CallToolResult has .content (list of content blocks) and .isError
             if result.isError:
                 error_text = ""

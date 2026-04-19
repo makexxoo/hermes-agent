@@ -27,7 +27,7 @@ WORKDIR /opt/hermes
 
 # Install Node dependencies and Playwright as root (--with-deps needs apt)
 RUN npm install --prefer-offline --no-audit && \
-    npx playwright install --with-deps chromium && npx @playwright/mcp install-browser chrome-for-testing && \
+    npx playwright install --with-deps chromium --only-shell && \
     cd /opt/hermes/scripts/whatsapp-bridge && \
     npm install --prefer-offline --no-audit && \
     npm cache clean --force

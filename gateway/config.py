@@ -1006,6 +1006,9 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         iris_auth_token = os.getenv("IRIS_WS_TOKEN", "").strip()
         if iris_auth_token:
             config.platforms[Platform.IRIS].extra["auth_token"] = iris_auth_token
+        iris_streaming = os.getenv("IRIS_STREAMING_ENABLED", "").strip().lower()
+        if iris_streaming:
+            config.platforms[Platform.IRIS].extra["streaming_enabled"] = iris_streaming in ("1", "true", "yes", "on")
         iris_home = os.getenv("IRIS_HOME_CHANNEL")
         if iris_home:
             config.platforms[Platform.IRIS].home_channel = HomeChannel(

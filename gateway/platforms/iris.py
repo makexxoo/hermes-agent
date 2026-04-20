@@ -12,6 +12,7 @@ import json
 import logging
 import mimetypes
 import os
+import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -45,10 +46,22 @@ class IrisAdapter(BasePlatformAdapter):
         self._auth_token: str = str(extra.get("auth_token") or os.getenv("IRIS_WS_TOKEN", "")).strip()
         self._reconnect_delay: float = float(extra.get("reconnect_delay_seconds", 5.0))
         self._connect_timeout: float = float(extra.get("connect_timeout_seconds", 30.0))
+        # Dynamic streaming gate:
+        # - True: enable GatewayStreamConsumer (progressive stream push)
+        # - False: send only final complete response
+        _streaming_env = (os.getenv("IRIS_STREAMING_ENABLED", "") or "").strip().lower()
+        _streaming_cfg = extra.get("streaming_enabled")
+        if _streaming_cfg is None:
+            self._streaming_push_enabled = _streaming_env in ("1", "true", "yes", "on")
+        else:
+            self._streaming_push_enabled = bool(_streaming_cfg)
+        # Gateway runner checks this flag before enabling stream consumer.
+        self.SUPPORTS_MESSAGE_EDITING = bool(self._streaming_push_enabled)
 
         self._session: Optional["aiohttp.ClientSession"] = None
         self._ws: Optional["aiohttp.ClientWebSocketResponse"] = None
         self._listen_task: Optional[asyncio.Task] = None
+        self._send_lock = asyncio.Lock()
 
     async def connect(self) -> bool:
         if not AIOHTTP_AVAILABLE:
@@ -61,7 +74,12 @@ class IrisAdapter(BasePlatformAdapter):
         self._running = True
         self._listen_task = asyncio.create_task(self._run_client_loop())
         self._mark_connected()
-        logger.info("[%s] Connecting to %s", self.name, self._ws_url)
+        logger.info(
+            "[%s] Connecting to %s (streaming_push=%s)",
+            self.name,
+            self._ws_url,
+            self._streaming_push_enabled,
+        )
         return True
 
     async def disconnect(self) -> None:
@@ -160,15 +178,43 @@ class IrisAdapter(BasePlatformAdapter):
         if not self._ws or self._ws.closed:
             return SendResult(success=False, error="IRIS websocket is not connected")
         try:
+            message_id = str(uuid.uuid4())
             payload = {
                 "type": "reply",
                 "sessionId": chat_id,
+                "messageId": message_id,
                 "content": [{"type": "text", "text": content}],
             }
-            await self._ws.send_json(payload)
-            return SendResult(success=True)
+            async with self._send_lock:
+                await self._ws.send_json(payload)
+            return SendResult(success=True, message_id=message_id)
         except Exception as e:
             logger.error("[%s] Failed to send text reply: %s", self.name, e, exc_info=True)
+            return SendResult(success=False, error=str(e))
+
+    async def edit_message(
+        self,
+        chat_id: str,
+        message_id: str,
+        content: str,
+    ) -> SendResult:
+        """Progressive stream push for IRIS when enabled."""
+        if not self._streaming_push_enabled:
+            return SendResult(success=False, error="IRIS streaming push is disabled")
+        if not self._ws or self._ws.closed:
+            return SendResult(success=False, error="IRIS websocket is not connected")
+        try:
+            payload = {
+                "type": "reply_update",
+                "sessionId": chat_id,
+                "messageId": message_id,
+                "content": [{"type": "text", "text": content}],
+            }
+            async with self._send_lock:
+                await self._ws.send_json(payload)
+            return SendResult(success=True, message_id=message_id)
+        except Exception as e:
+            logger.error("[%s] Failed to stream edit: %s", self.name, e, exc_info=True)
             return SendResult(success=False, error=str(e))
 
     async def send_image(
@@ -186,8 +232,12 @@ class IrisAdapter(BasePlatformAdapter):
             if caption:
                 parts.append({"type": "text", "text": caption})
             parts.append({"type": "image_url", "image_url": {"url": image_url, "detail": "auto"}})
-            await self._ws.send_json({"type": "reply", "sessionId": chat_id, "content": parts})
-            return SendResult(success=True)
+            message_id = str(uuid.uuid4())
+            async with self._send_lock:
+                await self._ws.send_json(
+                    {"type": "reply", "sessionId": chat_id, "messageId": message_id, "content": parts}
+                )
+            return SendResult(success=True, message_id=message_id)
         except Exception as e:
             logger.error("[%s] Failed to send image URL: %s", self.name, e, exc_info=True)
             return SendResult(success=False, error=str(e))
@@ -212,8 +262,12 @@ class IrisAdapter(BasePlatformAdapter):
             if caption:
                 parts.append({"type": "text", "text": caption})
             parts.append({"type": "image_url", "image_url": {"url": data_url, "detail": p.name}})
-            await self._ws.send_json({"type": "reply", "sessionId": chat_id, "content": parts})
-            return SendResult(success=True)
+            message_id = str(uuid.uuid4())
+            async with self._send_lock:
+                await self._ws.send_json(
+                    {"type": "reply", "sessionId": chat_id, "messageId": message_id, "content": parts}
+                )
+            return SendResult(success=True, message_id=message_id)
         except Exception as e:
             logger.error("[%s] Failed to send image file: %s", self.name, e, exc_info=True)
             return SendResult(success=False, error=str(e))

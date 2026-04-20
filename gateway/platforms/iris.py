@@ -183,6 +183,7 @@ class IrisAdapter(BasePlatformAdapter):
                 "type": "reply",
                 "sessionId": chat_id,
                 "messageId": message_id,
+                **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
                 "content": [{"type": "text", "text": content}],
             }
             async with self._send_lock:
@@ -208,6 +209,7 @@ class IrisAdapter(BasePlatformAdapter):
                 "type": "reply_update",
                 "sessionId": chat_id,
                 "messageId": message_id,
+                "requestId": message_id,
                 "content": [{"type": "text", "text": content}],
             }
             async with self._send_lock:
@@ -235,7 +237,13 @@ class IrisAdapter(BasePlatformAdapter):
             message_id = str(uuid.uuid4())
             async with self._send_lock:
                 await self._ws.send_json(
-                    {"type": "reply", "sessionId": chat_id, "messageId": message_id, "content": parts}
+                    {
+                        "type": "reply",
+                        "sessionId": chat_id,
+                        "messageId": message_id,
+                        **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
+                        "content": parts,
+                    }
                 )
             return SendResult(success=True, message_id=message_id)
         except Exception as e:
@@ -265,7 +273,13 @@ class IrisAdapter(BasePlatformAdapter):
             message_id = str(uuid.uuid4())
             async with self._send_lock:
                 await self._ws.send_json(
-                    {"type": "reply", "sessionId": chat_id, "messageId": message_id, "content": parts}
+                    {
+                        "type": "reply",
+                        "sessionId": chat_id,
+                        "messageId": message_id,
+                        **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
+                        "content": parts,
+                    }
                 )
             return SendResult(success=True, message_id=message_id)
         except Exception as e:

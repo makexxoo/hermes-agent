@@ -1006,6 +1006,13 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         iris_auth_token = os.getenv("IRIS_WS_TOKEN", "").strip()
         if iris_auth_token:
             config.platforms[Platform.IRIS].extra["auth_token"] = iris_auth_token
+        iris_home = os.getenv("IRIS_HOME_CHANNEL")
+        if iris_home:
+            config.platforms[Platform.IRIS].home_channel = HomeChannel(
+                platform=Platform.IRIS,
+                chat_id=iris_home,
+                name=os.getenv("IRIS_HOME_CHANNEL_NAME", "Home"),
+            )
 
     # Webhook platform
     webhook_enabled = os.getenv("WEBHOOK_ENABLED", "").lower() in ("true", "1", "yes")

@@ -67,6 +67,7 @@ class Platform(Enum):
     WEIXIN = "weixin"
     BLUEBUBBLES = "bluebubbles"
     QQBOT = "qqbot"
+    IRIS = "iris"
 
 
 @dataclass
@@ -286,6 +287,9 @@ class GatewayConfig:
                 connected.append(platform)
             # API Server uses enabled flag only (no token needed)
             elif platform == Platform.API_SERVER:
+                connected.append(platform)
+            # IRIS uses websocket URL in extra config
+            elif platform == Platform.IRIS and config.extra.get("ws_url"):
                 connected.append(platform)
             # Webhook uses enabled flag only (secrets are per-route)
             elif platform == Platform.WEBHOOK:
@@ -989,6 +993,19 @@ def _apply_env_overrides(config: GatewayConfig) -> None:
         api_server_model_name = os.getenv("API_SERVER_MODEL_NAME", "")
         if api_server_model_name:
             config.platforms[Platform.API_SERVER].extra["model_name"] = api_server_model_name
+
+    # IRIS websocket bridge
+    iris_ws_url = os.getenv("IRIS_WS_URL", "").strip()
+    iris_enabled = os.getenv("IRIS_ENABLED", "").lower() in ("true", "1", "yes")
+    if iris_ws_url or iris_enabled:
+        if Platform.IRIS not in config.platforms:
+            config.platforms[Platform.IRIS] = PlatformConfig()
+        config.platforms[Platform.IRIS].enabled = True
+        if iris_ws_url:
+            config.platforms[Platform.IRIS].extra["ws_url"] = iris_ws_url
+        iris_auth_token = os.getenv("IRIS_WS_TOKEN", "").strip()
+        if iris_auth_token:
+            config.platforms[Platform.IRIS].extra["auth_token"] = iris_auth_token
 
     # Webhook platform
     webhook_enabled = os.getenv("WEBHOOK_ENABLED", "").lower() in ("true", "1", "yes")

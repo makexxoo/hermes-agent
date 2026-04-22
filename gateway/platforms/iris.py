@@ -2,8 +2,8 @@
 IRIS websocket platform adapter.
 
 Connects Hermes gateway directly to an IRIS websocket endpoint, receives
-normalized IRIS `message` events, and sends `reply` events with text/image
-content parts.
+normalized IRIS `IrisMessage` messages, and sends `IrisMessage` back
+using the same protocol body (no envelope).
 """
 
 import asyncio
@@ -12,6 +12,7 @@ import json
 import logging
 import mimetypes
 import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -62,6 +63,7 @@ class IrisAdapter(BasePlatformAdapter):
         self._ws: Optional["aiohttp.ClientWebSocketResponse"] = None
         self._listen_task: Optional[asyncio.Task] = None
         self._send_lock = asyncio.Lock()
+        self._session_route: Dict[str, Dict[str, str]] = {}
 
     async def connect(self) -> bool:
         if not AIOHTTP_AVAILABLE:
@@ -140,18 +142,28 @@ class IrisAdapter(BasePlatformAdapter):
         except json.JSONDecodeError:
             return
 
-        if not isinstance(payload, dict) or payload.get("type") != "message":
+        if not isinstance(payload, dict):
+            return
+        if payload.get("type") not in ("message", "message_update"):
             return
 
         session_id = str(payload.get("sessionId") or "")
-        content = payload.get("content") or {}
-        text = ""
-        if isinstance(content, dict):
-            text = str(content.get("text") or "")
+        content = payload.get("content") or []
+        text_parts = []
+        if isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and part.get("type") == "text":
+                    text_parts.append(str(part.get("text") or ""))
+        text = "".join(text_parts)
         if not text:
             return
 
-        user_id = str(payload.get("channelUserId") or payload.get("userId") or "") or None
+        channel = str(payload.get("channel") or "")
+        channel_user_id = str(payload.get("channelUserId") or payload.get("userId") or "")
+        if session_id and channel and channel_user_id:
+            self._session_route[session_id] = {"channel": channel, "channelUserId": channel_user_id}
+
+        user_id = channel_user_id or None
         source = self.build_source(
             chat_id=session_id,
             chat_name=session_id or "iris-session",
@@ -168,6 +180,41 @@ class IrisAdapter(BasePlatformAdapter):
         )
         await self.handle_message(event)
 
+    def _resolve_route(self, chat_id: str, metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
+        route = dict(self._session_route.get(chat_id, {}))
+        if metadata:
+            channel = metadata.get("channel")
+            channel_user_id = metadata.get("channelUserId") or metadata.get("userId")
+            if channel:
+                route["channel"] = str(channel)
+            if channel_user_id:
+                route["channelUserId"] = str(channel_user_id)
+        return route
+
+    def _build_iris_message(
+        self,
+        *,
+        chat_id: str,
+        message_id: str,
+        msg_type: str,
+        content_parts: Any,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        route = self._resolve_route(chat_id, metadata)
+        channel = route.get("channel") or "iris"
+        channel_user_id = route.get("channelUserId") or chat_id
+        now_ms = int(time.time() * 1000)
+        return {
+            "id": message_id,
+            "type": msg_type,
+            "sessionId": chat_id,
+            "channel": channel,
+            "channelUserId": channel_user_id,
+            "content": content_parts,
+            "timestamp": now_ms,
+            "raw": {"source": "plugin-hermes-python"},
+        }
+
     async def send(
         self,
         chat_id: str,
@@ -179,13 +226,13 @@ class IrisAdapter(BasePlatformAdapter):
             return SendResult(success=False, error="IRIS websocket is not connected")
         try:
             message_id = str(uuid.uuid4())
-            payload = {
-                "type": "reply",
-                "sessionId": chat_id,
-                "messageId": message_id,
-                **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
-                "content": [{"type": "text", "text": content}],
-            }
+            payload = self._build_iris_message(
+                chat_id=chat_id,
+                message_id=message_id,
+                msg_type="message",
+                content_parts=[{"type": "text", "text": content}],
+                metadata=metadata,
+            )
             async with self._send_lock:
                 await self._ws.send_json(payload)
             return SendResult(success=True, message_id=message_id)
@@ -205,13 +252,12 @@ class IrisAdapter(BasePlatformAdapter):
         if not self._ws or self._ws.closed:
             return SendResult(success=False, error="IRIS websocket is not connected")
         try:
-            payload = {
-                "type": "reply_update",
-                "sessionId": chat_id,
-                "messageId": message_id,
-                "requestId": message_id,
-                "content": [{"type": "text", "text": content}],
-            }
+            payload = self._build_iris_message(
+                chat_id=chat_id,
+                message_id=message_id,
+                msg_type="message_update",
+                content_parts=[{"type": "text", "text": content}],
+            )
             async with self._send_lock:
                 await self._ws.send_json(payload)
             return SendResult(success=True, message_id=message_id)
@@ -235,16 +281,15 @@ class IrisAdapter(BasePlatformAdapter):
                 parts.append({"type": "text", "text": caption})
             parts.append({"type": "image_url", "image_url": {"url": image_url, "detail": "auto"}})
             message_id = str(uuid.uuid4())
+            payload = self._build_iris_message(
+                chat_id=chat_id,
+                message_id=message_id,
+                msg_type="message",
+                content_parts=parts,
+                metadata=metadata,
+            )
             async with self._send_lock:
-                await self._ws.send_json(
-                    {
-                        "type": "reply",
-                        "sessionId": chat_id,
-                        "messageId": message_id,
-                        **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
-                        "content": parts,
-                    }
-                )
+                await self._ws.send_json(payload)
             return SendResult(success=True, message_id=message_id)
         except Exception as e:
             logger.error("[%s] Failed to send image URL: %s", self.name, e, exc_info=True)
@@ -271,16 +316,15 @@ class IrisAdapter(BasePlatformAdapter):
                 parts.append({"type": "text", "text": caption})
             parts.append({"type": "image_url", "image_url": {"url": data_url, "detail": p.name}})
             message_id = str(uuid.uuid4())
+            payload = self._build_iris_message(
+                chat_id=chat_id,
+                message_id=message_id,
+                msg_type="message",
+                content_parts=parts,
+                metadata=metadata,
+            )
             async with self._send_lock:
-                await self._ws.send_json(
-                    {
-                        "type": "reply",
-                        "sessionId": chat_id,
-                        "messageId": message_id,
-                        **({"replyTo": reply_to, "requestId": reply_to} if reply_to else {}),
-                        "content": parts,
-                    }
-                )
+                await self._ws.send_json(payload)
             return SendResult(success=True, message_id=message_id)
         except Exception as e:
             logger.error("[%s] Failed to send image file: %s", self.name, e, exc_info=True)

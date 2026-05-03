@@ -30,6 +30,37 @@ from gateway.platforms.base import BasePlatformAdapter, MessageEvent, MessageTyp
 
 logger = logging.getLogger(__name__)
 
+# Generic bridge labels — do not treat as a concrete upstream for prompt hints.
+_IRIS_NON_UPSTREAM_CHANNELS = frozenset(
+    {"", "iris", "default", "bridge", "proxy", "gateway", "hermes"}
+)
+
+
+def _iris_proxy_upstream(payload: Dict[str, Any]) -> Optional[str]:
+    """Best-effort upstream slug from IRIS JSON (feishu, weixin, …) for SessionSource / prompts."""
+    for key in (
+        "upstream",
+        "sourcePlatform",
+        "source_platform",
+        "proxiedPlatform",
+        "proxied_platform",
+        "origin_platform",
+        "client",
+        "source",
+    ):
+        v = payload.get(key)
+        if isinstance(v, str) and (s := v.strip().lower()):
+            if s in _IRIS_NON_UPSTREAM_CHANNELS:
+                continue
+            return s
+    ch = payload.get("channel")
+    if str.startswith(ch,"wechat"):
+        ch = "weixin"
+    if isinstance(ch, str) and (s := ch.strip().lower()):
+        if s not in _IRIS_NON_UPSTREAM_CHANNELS:
+            return s
+    return None
+
 
 def check_iris_requirements() -> bool:
     """Check if IRIS adapter dependencies are available and minimally configured."""
@@ -164,12 +195,14 @@ class IrisAdapter(BasePlatformAdapter):
             self._session_route[session_id] = {"channel": channel, "channelUserId": channel_user_id}
 
         user_id = channel_user_id or None
+        proxy_upstream = _iris_proxy_upstream(payload)
         source = self.build_source(
             chat_id=session_id,
             chat_name=session_id or "iris-session",
             chat_type="dm",
             user_id=user_id,
             user_name=user_id,
+            proxy_upstream=proxy_upstream,
         )
         event = MessageEvent(
             text=text,
@@ -247,6 +280,7 @@ class IrisAdapter(BasePlatformAdapter):
             content: str,
             *,
             finalize: bool = False,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         """Progressive stream push for IRIS when enabled."""
         if not self._streaming_push_enabled:
@@ -259,6 +293,7 @@ class IrisAdapter(BasePlatformAdapter):
                 message_id=message_id,
                 msg_type="message_update",
                 content_parts=[{"type": "text", "text": content}],
+                metadata=metadata,
             )
             async with self._send_lock:
                 await self._ws.send_json(payload)
@@ -333,4 +368,4 @@ class IrisAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e))
 
     async def get_chat_info(self, chat_id: str) -> Dict[str, Any]:
-        return {"name": chat_id, "type": "dm"}
+        return {"name": chat_id, "type": "dm", "chat_id": chat_id}

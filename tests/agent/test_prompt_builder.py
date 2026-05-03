@@ -27,6 +27,7 @@ from agent.prompt_builder import (
     MEMORY_GUIDANCE,
     SESSION_SEARCH_GUIDANCE,
     PLATFORM_HINTS,
+    resolve_messaging_platform_hint,
     WSL_ENVIRONMENT_HINT,
 )
 from hermes_cli.nous_subscription import NousFeatureState, NousSubscriptionFeatures
@@ -788,6 +789,7 @@ class TestPromptBuilderConstants:
         assert "discord" in PLATFORM_HINTS
         assert "cron" in PLATFORM_HINTS
         assert "cli" in PLATFORM_HINTS
+        assert "iris" in PLATFORM_HINTS
 
     def test_cli_hint_does_not_suggest_media_tags(self):
         # Regression: MEDIA:/path tags are intercepted only by messaging
@@ -824,6 +826,17 @@ class TestPromptBuilderConstants:
         assert "Feishu" in hint
         assert "MEDIA:" in hint
         assert "Markdown" in hint
+
+    def test_resolve_messaging_platform_hint_iris_delegates_to_upstream(self):
+        combined = resolve_messaging_platform_hint("iris", "feishu")
+        assert combined is not None
+        assert "IRIS" in combined
+        assert "feishu" in combined.lower()
+        assert "Feishu" in combined
+
+    def test_resolve_messaging_platform_hint_iris_unknown_upstream_falls_back(self):
+        hint = resolve_messaging_platform_hint("iris", "unknown-client-xyz")
+        assert hint == PLATFORM_HINTS["iris"]
 
 
 # =========================================================================

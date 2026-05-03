@@ -130,7 +130,8 @@ from agent.memory_manager import StreamingContextScrubber, build_memory_context_
 from agent.retry_utils import jittered_backoff
 from agent.error_classifier import classify_api_error, FailoverReason
 from agent.prompt_builder import (
-    DEFAULT_AGENT_IDENTITY, PLATFORM_HINTS,
+    DEFAULT_AGENT_IDENTITY,
+    resolve_messaging_platform_hint,
     MEMORY_GUIDANCE, SESSION_SEARCH_GUIDANCE, SKILLS_GUIDANCE,
     HERMES_AGENT_HELP_GUIDANCE,
     build_nous_subscription_prompt,
@@ -936,6 +937,7 @@ class AIAgent:
         chat_type: str = None,
         thread_id: str = None,
         gateway_session_key: str = None,
+        platform_hint_upstream: str = None,
         skip_context_files: bool = False,
         load_soul_identity: bool = False,
         skip_memory: bool = False,
@@ -1006,6 +1008,8 @@ class AIAgent:
         self.quiet_mode = quiet_mode
         self.ephemeral_system_prompt = ephemeral_system_prompt
         self.platform = platform  # "cli", "telegram", "discord", "whatsapp", etc.
+        # IRIS bridge: logical upstream (feishu, weixin, …) for resolve_messaging_platform_hint
+        self.platform_hint_upstream = (platform_hint_upstream or "").strip() or None
         self._user_id = user_id  # Platform user identifier (gateway sessions)
         self._user_name = user_name
         self._chat_id = chat_id
@@ -4948,8 +4952,12 @@ class AIAgent:
             prompt_parts.append(_env_hints)
 
         platform_key = (self.platform or "").lower().strip()
-        if platform_key in PLATFORM_HINTS:
-            prompt_parts.append(PLATFORM_HINTS[platform_key])
+        _hint_text = resolve_messaging_platform_hint(
+            platform_key,
+            getattr(self, "platform_hint_upstream", None),
+        )
+        if _hint_text:
+            prompt_parts.append(_hint_text)
         elif platform_key:
             # Check plugin registry for platform-specific LLM guidance
             try:

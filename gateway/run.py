@@ -3474,6 +3474,13 @@ class GatewayRunner:
                 return None
             return YuanbaoAdapter(config)
 
+        elif platform == Platform.IRIS:
+            from gateway.platforms.iris import IrisAdapter, check_iris_requirements
+            if not check_iris_requirements():
+                logger.warning("IRIS: aiohttp not installed. Run: pip install aiohttp")
+                return None
+            return IrisAdapter(config)
+
         return None
     def _is_user_authorized(self, source: SessionSource) -> bool:
         """
@@ -3516,6 +3523,7 @@ class GatewayRunner:
             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
             Platform.QQBOT: "QQ_ALLOWED_USERS",
             Platform.YUANBAO: "YUANBAO_ALLOWED_USERS",
+            Platform.IRIS: "IRIS_ALLOWED_USERS",
         }
         platform_group_user_env_map = {
             Platform.TELEGRAM: "TELEGRAM_GROUP_ALLOWED_USERS",
@@ -3542,6 +3550,7 @@ class GatewayRunner:
             Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOW_ALL_USERS",
             Platform.QQBOT: "QQ_ALLOW_ALL_USERS",
             Platform.YUANBAO: "YUANBAO_ALLOW_ALL_USERS",
+            Platform.IRIS: "IRIS_ALLOW_ALL_USERS",
         }
 
         # Plugin platforms: check the registry for auth env var names
@@ -3727,6 +3736,7 @@ class GatewayRunner:
                 Platform.WEIXIN:   "WEIXIN_ALLOWED_USERS",
                 Platform.BLUEBUBBLES: "BLUEBUBBLES_ALLOWED_USERS",
                 Platform.QQBOT:    "QQ_ALLOWED_USERS",
+                Platform.IRIS:     "IRIS_ALLOWED_USERS",
             }
             platform_group_env_map = {
                 Platform.TELEGRAM: (
@@ -7514,6 +7524,7 @@ class GatewayRunner:
                     chat_name=source.chat_name,
                     chat_type=source.chat_type,
                     thread_id=source.thread_id,
+                    platform_hint_upstream=getattr(source, "proxy_upstream", None),
                     session_db=self._session_db,
                     fallback_model=self._fallback_model,
                 )
@@ -11232,12 +11243,15 @@ class GatewayRunner:
             # Check agent cache — reuse the AIAgent from the previous message
             # in this session to preserve the frozen system prompt and tool
             # schemas for prompt cache hits.
+            _cache_bust = dict(self._extract_cache_busting_config(user_config) or {})
+            if source.platform == Platform.IRIS:
+                _cache_bust["iris_proxy_upstream"] = getattr(source, "proxy_upstream", None) or ""
             _sig = self._agent_config_signature(
                 turn_route["model"],
                 turn_route["runtime"],
                 enabled_toolsets,
                 combined_ephemeral,
-                cache_keys=self._extract_cache_busting_config(user_config),
+                cache_keys=_cache_bust,
             )
             agent = None
             _cache_lock = getattr(self, "_agent_cache_lock", None)
@@ -11286,6 +11300,7 @@ class GatewayRunner:
                     chat_type=source.chat_type,
                     thread_id=source.thread_id,
                     gateway_session_key=session_key,
+                    platform_hint_upstream=getattr(source, "proxy_upstream", None),
                     session_db=self._session_db,
                     fallback_model=self._fallback_model,
                 )

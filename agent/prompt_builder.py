@@ -455,7 +455,38 @@ PLATFORM_HINTS = {
         "image and is the WRONG path. Bare Unicode emoji in text is also not a substitute "
         "— when a sticker is the right response, use yb_send_sticker."
     ),
+    "iris": (
+        "You are on **IRIS**, a gateway bridge: the user's real client may be Feishu, "
+        "Weixin/WeChat, or another channel behind the proxy. When the session does not "
+        "name a specific upstream, prefer plain readable text; avoid assuming rich "
+        "Markdown or native attachments unless you know the downstream client supports them. "
+        "When a concrete upstream is identified for this session, the system prompt will "
+        "also include that channel's rules."
+    ),
 }
+
+
+def resolve_messaging_platform_hint(
+    platform_key: str,
+    proxy_upstream: "str | None" = None,
+) -> "str | None":
+    """Resolve the system-prompt platform hint.
+
+    For **iris**, when ``proxy_upstream`` is set (from SessionSource / gateway),
+    reuse the matching entry from ``PLATFORM_HINTS`` (e.g. feishu, weixin) so
+    the model sees the real client's formatting rules. Otherwise use the
+    generic ``iris`` hint.
+    """
+    pk = (platform_key or "").strip().lower()
+    if not pk:
+        return None
+    if pk != "iris":
+        return PLATFORM_HINTS.get(pk)
+    up = (proxy_upstream or "").strip().lower()
+    if up and up in PLATFORM_HINTS:
+        return PLATFORM_HINTS.get(up)
+    return PLATFORM_HINTS.get("iris")
+
 
 # ---------------------------------------------------------------------------
 # Environment hints — execution-environment awareness for the agent.

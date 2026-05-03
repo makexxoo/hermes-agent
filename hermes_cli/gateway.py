@@ -2747,6 +2747,29 @@ _PLATFORMS = [
         ],
     },
     {
+        "key": "iris",
+        "label": "IRIS (WebSocket bridge)",
+        "emoji": "🔗",
+        "token_var": "IRIS_WS_URL",
+        "setup_instructions": [
+            "1. Run your IRIS proxy and copy the WebSocket URL Hermes should connect to (wss://…).",
+            "2. Optionally set IRIS_WS_TOKEN if the bridge expects an auth message after connect.",
+            "3. Inbound JSON can identify the real client with channel, upstream, or sourcePlatform "
+            "(e.g. feishu, weixin) so the agent gets matching formatting hints.",
+        ],
+        "vars": [
+            {"name": "IRIS_WS_URL", "prompt": "IRIS WebSocket URL", "password": False,
+             "help": "Hermes connects as a WebSocket client to this URL."},
+            {"name": "IRIS_WS_TOKEN", "prompt": "Optional bridge auth token", "password": True,
+             "help": "When set, sent as {\"type\":\"auth\",\"token\":...} right after the socket opens."},
+            {"name": "IRIS_ALLOWED_USERS", "prompt": "Allowed channelUserId / userId values (comma-separated, or empty for pairing / GATEWAY_ALLOW_ALL)", "password": False,
+             "is_allowlist": True,
+             "help": "Restrict who can talk to the bot through IRIS."},
+            {"name": "IRIS_HOME_CHANNEL", "prompt": "Home session id (IRIS sessionId for cron / bare send_message target)", "password": False,
+             "help": "Used when deliver target is just 'iris' with no explicit session id."},
+        ],
+    },
+    {
         "key": "yuanbao",
         "label": "Yuanbao",
         "emoji": "💎",

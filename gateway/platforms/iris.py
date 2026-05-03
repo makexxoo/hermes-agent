@@ -192,13 +192,13 @@ class IrisAdapter(BasePlatformAdapter):
         return route
 
     def _build_iris_message(
-        self,
-        *,
-        chat_id: str,
-        message_id: str,
-        msg_type: str,
-        content_parts: Any,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            *,
+            chat_id: str,
+            message_id: str,
+            msg_type: str,
+            content_parts: Any,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         route = self._resolve_route(chat_id, metadata)
         channel = route.get("channel") or "iris"
@@ -216,11 +216,11 @@ class IrisAdapter(BasePlatformAdapter):
         }
 
     async def send(
-        self,
-        chat_id: str,
-        content: str,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            chat_id: str,
+            content: str,
+            reply_to: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         if not self._ws or self._ws.closed:
             return SendResult(success=False, error="IRIS websocket is not connected")
@@ -241,10 +241,12 @@ class IrisAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e))
 
     async def edit_message(
-        self,
-        chat_id: str,
-        message_id: str,
-        content: str,
+            self,
+            chat_id: str,
+            message_id: str,
+            content: str,
+            *,
+            finalize: bool = False,
     ) -> SendResult:
         """Progressive stream push for IRIS when enabled."""
         if not self._streaming_push_enabled:
@@ -266,12 +268,12 @@ class IrisAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e))
 
     async def send_image(
-        self,
-        chat_id: str,
-        image_url: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            chat_id: str,
+            image_url: str,
+            caption: Optional[str] = None,
+            reply_to: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         if not self._ws or self._ws.closed:
             return SendResult(success=False, error="IRIS websocket is not connected")
@@ -296,12 +298,12 @@ class IrisAdapter(BasePlatformAdapter):
             return SendResult(success=False, error=str(e))
 
     async def send_image_file(
-        self,
-        chat_id: str,
-        image_path: str,
-        caption: Optional[str] = None,
-        reply_to: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+            self,
+            chat_id: str,
+            image_path: str,
+            caption: Optional[str] = None,
+            reply_to: Optional[str] = None,
+            metadata: Optional[Dict[str, Any]] = None,
     ) -> SendResult:
         if not self._ws or self._ws.closed:
             return SendResult(success=False, error="IRIS websocket is not connected")

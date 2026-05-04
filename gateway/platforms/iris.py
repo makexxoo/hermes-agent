@@ -39,22 +39,22 @@ _IRIS_NON_UPSTREAM_CHANNELS = frozenset(
 def _iris_proxy_upstream(payload: Dict[str, Any]) -> Optional[str]:
     """Best-effort upstream slug from IRIS JSON (feishu, weixin, …) for SessionSource / prompts."""
     for key in (
-        "upstream",
-        "sourcePlatform",
-        "source_platform",
-        "proxiedPlatform",
-        "proxied_platform",
-        "origin_platform",
-        "client",
-        "source",
+            "upstream",
+            "sourcePlatform",
+            "source_platform",
+            "proxiedPlatform",
+            "proxied_platform",
+            "origin_platform",
+            "client",
+            "source",
     ):
         v = payload.get(key)
         if isinstance(v, str) and (s := v.strip().lower()):
             if s in _IRIS_NON_UPSTREAM_CHANNELS:
                 continue
             return s
-    ch = payload.get("channel")
-    if str.startswith(ch,"wechat"):
+    ch = payload.get("channelType")
+    if str.startswith(ch, "wechat"):
         ch = "weixin"
     if isinstance(ch, str) and (s := ch.strip().lower()):
         if s not in _IRIS_NON_UPSTREAM_CHANNELS:
@@ -189,20 +189,31 @@ class IrisAdapter(BasePlatformAdapter):
         if not text:
             return
 
-        channel = str(payload.get("channel") or "")
+        channel_type = str(payload.get("channelType") or "")
+        channel_name = str(payload.get("channelName") or "")
         channel_user_id = str(payload.get("channelUserId") or payload.get("userId") or "")
-        if session_id and channel and channel_user_id:
-            self._session_route[session_id] = {"channel": channel, "channelUserId": channel_user_id}
+
+        proxy_upstream = _iris_proxy_upstream(payload)
+
+        metadata = {
+            "channelType": channel_type,
+            "channelName": channel_name,
+            "channelUserId": channel_user_id,
+            "sessionId": session_id,
+            "sessionType": "dm",
+            "proxyUpstream": proxy_upstream,
+        }
+
+        self._session_route[session_id] = metadata
 
         user_id = channel_user_id or None
-        proxy_upstream = _iris_proxy_upstream(payload)
         source = self.build_source(
             chat_id=session_id,
             chat_name=session_id or "iris-session",
             chat_type="dm",
             user_id=user_id,
             user_name=user_id,
-            proxy_upstream=proxy_upstream,
+            metadata=metadata
         )
         event = MessageEvent(
             text=text,
@@ -216,10 +227,10 @@ class IrisAdapter(BasePlatformAdapter):
     def _resolve_route(self, chat_id: str, metadata: Optional[Dict[str, Any]]) -> Dict[str, str]:
         route = dict(self._session_route.get(chat_id, {}))
         if metadata:
-            channel = metadata.get("channel")
+            channel = metadata.get("channelName")
             channel_user_id = metadata.get("channelUserId") or metadata.get("userId")
             if channel:
-                route["channel"] = str(channel)
+                route["channelName"] = str(channel)
             if channel_user_id:
                 route["channelUserId"] = str(channel_user_id)
         return route
@@ -234,14 +245,16 @@ class IrisAdapter(BasePlatformAdapter):
             metadata: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         route = self._resolve_route(chat_id, metadata)
-        channel = route.get("channel") or "iris"
+        channel_type = route.get("channelType") or "iris"
+        channel_name = route.get("channelName") or "default"
         channel_user_id = route.get("channelUserId") or chat_id
         now_ms = int(time.time() * 1000)
         return {
             "id": message_id,
             "type": msg_type,
             "sessionId": chat_id,
-            "channel": channel,
+            "channelType": channel_type,
+            "channelName": channel_name,
             "channelUserId": channel_user_id,
             "content": content_parts,
             "timestamp": now_ms,

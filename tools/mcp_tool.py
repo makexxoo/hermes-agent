@@ -2009,9 +2009,13 @@ def _make_tool_handler(server_name: str, tool_name: str, tool_timeout: float):
                 "error": f"MCP server '{server_name}' is not connected"
             }, ensure_ascii=False)
 
+        # Build _meta with caller context so MCP servers can identify
+        # which platform, user, and session triggered the tool call.
+        meta: dict | None = kwargs.pop("platform_metadata", None)
+
         async def _call():
             async with server._rpc_lock:
-                result = await server.session.call_tool(tool_name, arguments=args)
+                result = await server.session.call_tool(tool_name, arguments=args, meta=meta)
             # MCP CallToolResult has .content (list of content blocks) and .isError
             if result.isError:
                 error_text = ""

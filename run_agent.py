@@ -937,7 +937,7 @@ class AIAgent:
         chat_type: str = None,
         thread_id: str = None,
         gateway_session_key: str = None,
-        platform_hint_upstream: str = None,
+        platform_metadata: Optional[Dict[str, Any]] = None,
         skip_context_files: bool = False,
         load_soul_identity: bool = False,
         skip_memory: bool = False,
@@ -1008,8 +1008,7 @@ class AIAgent:
         self.quiet_mode = quiet_mode
         self.ephemeral_system_prompt = ephemeral_system_prompt
         self.platform = platform  # "cli", "telegram", "discord", "whatsapp", etc.
-        # IRIS bridge: logical upstream (feishu, weixin, …) for resolve_messaging_platform_hint
-        self.platform_hint_upstream = (platform_hint_upstream or "").strip() or None
+        self.platform_metadata = platform_metadata
         self._user_id = user_id  # Platform user identifier (gateway sessions)
         self._user_name = user_name
         self._chat_id = chat_id
@@ -4954,7 +4953,7 @@ class AIAgent:
         platform_key = (self.platform or "").lower().strip()
         _hint_text = resolve_messaging_platform_hint(
             platform_key,
-            getattr(self, "platform_hint_upstream", None),
+            self.platform_metadata,
         )
         if _hint_text:
             prompt_parts.append(_hint_text)
@@ -9226,6 +9225,7 @@ class AIAgent:
                 session_id=self.session_id or "",
                 enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
                 skip_pre_tool_call_hook=True,
+                platform_metadata=self.platform_metadata,
             )
 
     @staticmethod
@@ -9850,6 +9850,7 @@ class AIAgent:
                         session_id=self.session_id or "",
                         enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
                         skip_pre_tool_call_hook=True,
+                        platform_metadata=self.platform_metadata
                     )
                     _spinner_result = function_result
                 except Exception as tool_error:
@@ -9870,6 +9871,7 @@ class AIAgent:
                         session_id=self.session_id or "",
                         enabled_tools=list(self.valid_tool_names) if self.valid_tool_names else None,
                         skip_pre_tool_call_hook=True,
+                        platform_metadata=self.platform_metadata
                     )
                 except Exception as tool_error:
                     function_result = f"Error executing tool '{function_name}': {tool_error}"

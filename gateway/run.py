@@ -7524,7 +7524,7 @@ class GatewayRunner:
                     chat_name=source.chat_name,
                     chat_type=source.chat_type,
                     thread_id=source.thread_id,
-                    platform_hint_upstream=getattr(source, "proxy_upstream", None),
+                    platform_metadata=source.metadata,
                     session_db=self._session_db,
                     fallback_model=self._fallback_model,
                 )
@@ -11300,7 +11300,7 @@ class GatewayRunner:
                     chat_type=source.chat_type,
                     thread_id=source.thread_id,
                     gateway_session_key=session_key,
-                    platform_hint_upstream=getattr(source, "proxy_upstream", None),
+                    platform_metadata=source.metadata,
                     session_db=self._session_db,
                     fallback_model=self._fallback_model,
                 )

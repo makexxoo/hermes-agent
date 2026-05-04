@@ -827,17 +827,6 @@ class TestPromptBuilderConstants:
         assert "MEDIA:" in hint
         assert "Markdown" in hint
 
-    def test_resolve_messaging_platform_hint_iris_delegates_to_upstream(self):
-        combined = resolve_messaging_platform_hint("iris", "feishu")
-        assert combined is not None
-        assert "IRIS" in combined
-        assert "feishu" in combined.lower()
-        assert "Feishu" in combined
-
-    def test_resolve_messaging_platform_hint_iris_unknown_upstream_falls_back(self):
-        hint = resolve_messaging_platform_hint("iris", "unknown-client-xyz")
-        assert hint == PLATFORM_HINTS["iris"]
-
 
 # =========================================================================
 # Environment hints

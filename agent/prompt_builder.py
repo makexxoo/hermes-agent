@@ -468,7 +468,7 @@ PLATFORM_HINTS = {
 
 def resolve_messaging_platform_hint(
     platform_key: str,
-    proxy_upstream: "str | None" = None,
+    platform_metadata: dict
 ) -> "str | None":
     """Resolve the system-prompt platform hint.
 
@@ -482,6 +482,7 @@ def resolve_messaging_platform_hint(
         return None
     if pk != "iris":
         return PLATFORM_HINTS.get(pk)
+    proxy_upstream = platform_metadata.get("proxyUpstream")
     up = (proxy_upstream or "").strip().lower()
     if up and up in PLATFORM_HINTS:
         return PLATFORM_HINTS.get(up)
